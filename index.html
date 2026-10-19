@@ -324,12 +324,22 @@ async function deleteStudents(ids) {
     ? `${names[0]} 학생의 기초조사서를 삭제할까요?\n스프레드시트에서도 지워지고 되돌릴 수 없어요.`
     : `${list.length}명의 기초조사서를 삭제할까요?\n${names.slice(0, 10).join(', ')}${list.length > 10 ? ' 외' : ''}\n스프레드시트에서도 지워지고 되돌릴 수 없어요.`;
   if (!confirm(msg)) return;
+  const delIds = list.map(s => s.studentId);
   try {
-    const j = await api('delete', { studentIds: list.map(s => s.studentId) });
+    let n = 0, oldServer = false;
+    // 새 서버는 여러 명을 한 번에, 예전 서버(재배포 전)는 한 명씩만 지울 수 있어서 둘 다 대응
+    const j = await api('delete', { studentIds: delIds, studentId: delIds[0] });
+    if (typeof j.deleted === 'number') n = j.deleted;
+    else {
+      oldServer = true;
+      n = j.deleted ? 1 : 0;
+      for (const id of delIds.slice(1)) { const r = await api('delete', { studentId: id }); if (r.deleted) n++; }
+    }
     $('modal').classList.add('hidden'); $('chkAll').checked = false;
     await load();
-    toast(`${j.deleted}명 삭제했어요.`);
-  } catch (e) { toast(e.message); }
+    if (n === 0) toast('삭제되지 않았어요. 스프레드시트 응답 시트의 학번을 확인하거나, Apps Script를 [새 버전]으로 다시 배포해 주세요.');
+    else toast(`${n}명 삭제했어요.` + (oldServer ? ' (Apps Script를 새 버전으로 배포하면 더 빨라져요)' : ''));
+  } catch (e) { toast('삭제 실패: ' + e.message); }
 }
 $('btnDelSel').onclick = () => {
   const ids = [...document.querySelectorAll('.chk:checked')].map(c => c.value);
